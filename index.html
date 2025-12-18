@@ -3,43 +3,68 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"/>
-<title>WOS シミュレーションマップ（実座標・完全版）</title>
+<title>人が逃げてくMAP</title>
 <style>
+  :root{
+    --headerH: 64px;
+  }
   html,body{
-    margin:0;height:100%;
-    background:#050b1a;color:#e9eefc;
-    font-family:system-ui;overflow:hidden;
+    margin:0;
+    height:100dvh; /* iOS対策 */
+    background:#050b1a;
+    color:#e9eefc;
+    font-family:system-ui;
+    overflow:hidden;
   }
   header{
-    position:fixed;left:0;right:0;top:0;z-index:10;
-    display:flex;gap:8px;align-items:center;flex-wrap:wrap;
-    padding:10px;background:rgba(10,16,40,.92);
+    position:fixed; left:0; right:0; top:0; z-index:10;
+    display:flex; gap:8px; align-items:center; flex-wrap:wrap;
+    padding:10px;
+    padding-top:calc(10px + env(safe-area-inset-top));
+    background:rgba(10,16,40,.92);
     border-bottom:1px solid rgba(255,255,255,.12);
     backdrop-filter: blur(8px);
   }
   .pill{
-    padding:6px 10px;border:1px solid rgba(255,255,255,.18);
-    border-radius:999px;background:#0b1433
+    padding:6px 10px;
+    border:1px solid rgba(255,255,255,.18);
+    border-radius:999px;
+    background:#0b1433;
   }
-  button,select,input{
-    background:#0f1b44;color:#e9eefc;border:1px solid rgba(255,255,255,.18);
-    border-radius:10px;padding:8px 10px;font-size:14px
+  button, input{
+    background:#0f1b44;
+    color:#e9eefc;
+    border:1px solid rgba(255,255,255,.18);
+    border-radius:10px;
+    padding:8px 10px;
+    font-size:14px;
   }
   button{cursor:pointer}
-  #c{position:fixed;inset:52px 0 0 0;touch-action:none;}
   .mini{opacity:.85;font-size:12px}
+
+  /* canvas は header の下から全面 */
+  #c{
+    position:fixed;
+    left:0; right:0;
+    top:var(--headerH);
+    bottom:0;
+    touch-action:none;
+  }
 </style>
 </head>
 <body>
-<header>
-  <span class="pill">WOS シミュレーション（実座標）</span>
 
-  <span class="mini">HQ:</span>
-  <input id="hqLabel" value="N9Q HQ" style="width:120px">
-  <input id="hqColor" type="color" value="#2b7cff" title="同盟色">
+<header id="hdr">
+  <span class="pill">WOS シミュレーション</span>
 
-  <span class="mini">旗距離:</span>
-  <input id="maxDist" type="number" value="300" style="width:80px" title="距離(実座標の単位)">
+  <span class="mini">HQ名</span>
+  <input id="hqLabel" value="N9Q HQ" style="width:110px">
+
+  <span class="mini">色</span>
+  <input id="hqColor" type="color" value="#2b7cff">
+
+  <span class="mini">旗距離</span>
+  <input id="maxDist" type="number" value="300" style="width:78px">
 
   <button id="addHQ">HQ追加</button>
   <button id="save">保存(JSON)</button>
@@ -51,89 +76,101 @@
 
 <script>
 (() => {
-  const canvas = document.getElementById('c');
-  const ctx = canvas.getContext('2d');
+  const canvas = document.getElementById("c");
+  const ctx = canvas.getContext("2d");
+  const hdr = document.getElementById("hdr");
 
-  // ====== 見た目パラメータ ======
-  const SCALE = 0.8;        // 実座標→画面の倍率（好みで）
-  const TILE_W = 40;        // 地面タイル幅
-  const TILE_H = 20;        // 地面タイル高
+  // ===== 表示パラメータ（好みで調整OK） =====
+  const SCALE = 0.8;          // 実座標→画面倍率
+  const TILE_W = 40;          // 地面タイル幅
+  const TILE_H = 20;          // 地面タイル高
+  const WORLD_MIN = 0;
+  const WORLD_MAX = 1200;
 
-  // ====== カメラ（パン＆ズーム） ======
+  // ===== カメラ =====
   const cam = { x:0, y:0, s:1 };
-
-  // 画面中心（毎フレーム更新）
   const BASE = { x:0, y:0 };
 
-  // ====== 固定施設（実座標） ======
+  // ===== 固定施設：太陽城 / 要塞 / 砦 =====
   const FIXED = [
-    // 太陽城
-    { type:"sun", x:597, y:597, label:"SUN" },
+    { type:"sun",      x:597, y:597, label:"SUN" },
 
-    // 要塞（4）
     { type:"fortress", x:597, y:800, label:"要塞1" },
     { type:"fortress", x:400, y:597, label:"要塞2" },
     { type:"fortress", x:597, y:400, label:"要塞3" },
     { type:"fortress", x:800, y:597, label:"要塞4" },
 
-    // 砦（12）
     { type:"fort", x:237, y:828, label:"砦" },
     { type:"fort", x:237, y:606, label:"砦" },
     { type:"fort", x:237, y:348, label:"砦" },
-
     { type:"fort", x:366, y:237, label:"砦" },
     { type:"fort", x:588, y:137, label:"砦" },
     { type:"fort", x:846, y:237, label:"砦" },
-
     { type:"fort", x:957, y:348, label:"砦" },
     { type:"fort", x:957, y:606, label:"砦" },
     { type:"fort", x:957, y:828, label:"砦" },
-
     { type:"fort", x:846, y:957, label:"砦" },
     { type:"fort", x:606, y:957, label:"砦" },
     { type:"fort", x:306, y:957, label:"砦" },
   ];
 
-  // ====== HQ（複数対応） ======
+  // ===== ステーション（74） =====
+  const STATIONS = [
+    [138,327],[138,957],[237,138],[327,1038],[768,138],[957,1068],
+    [1068,237],[1068,747],[87,666],[138,237],[267,1068],[537,87],
+    [636,1137],[957,138],[1068,936],[1137,567],[138,138],[138,666],
+    [138,1038],[537,138],[666,1068],[1068,138],[1068,567],[1068,1068],
+    [327,666],[486,327],[768,867],[867,567],[237,237],[237,957],
+    [267,537],[537,936],[666,267],[957,237],[936,537],[957,957],
+    [327,327],[327,867],[867,327],[867,867],[138,747],[237,486],
+    [486,138],[486,957],[768,237],[768,1038],[957,747],[1068,486],
+    [138,438],[138,867],[366,138],[438,1068],[666,138],[738,957],
+    [957,438],[1068,666],[387,486],[588,867],[816,486],[387,717],
+    [588,327],[816,717],[327,567],[486,867],[768,327],[867,666]
+  ].map(([x,y],i)=>({ type:"station", x, y, label:`S${i+1}` }));
+
+  // ===== HQ（複数） =====
   let hqs = [
     { id:1, type:"hq", x:520, y:520, label:"N9Q HQ", color:"#2b7cff" }
   ];
   let nextHqId = 2;
 
-  // ====== 実座標 → 画面（アイソメ変換） ======
+  // ===== ユーティリティ =====
+  function clamp(v,min,max){ return Math.max(min, Math.min(max, v)); }
+
+  // 実座標→画面（アイソメ）
   function iso(x,y){
-    return {
-      sx:(x-y)*SCALE,
-      sy:(x+y)*SCALE*0.5
-    };
+    return { sx:(x-y)*SCALE, sy:(x+y)*SCALE*0.5 };
   }
 
-  // ====== 画面 → 実座標（逆変換） ======
+  // 画面→実座標（逆変換）
   function screenToReal(px, py){
-    // cam/BASE を戻して「ワールド座標(アイソメ平面)」へ
     const x = (px - BASE.x - cam.x) / cam.s;
     const y = (py - BASE.y - cam.y) / cam.s;
-
-    // iso: sx=(X-Y)*SCALE, sy=(X+Y)*SCALE*0.5 を解く
     const X = (y/(SCALE*0.5) + x/SCALE) / 2;
     const Y = (y/(SCALE*0.5) - x/SCALE) / 2;
     return { x: Math.round(X), y: Math.round(Y) };
   }
 
-  function clamp(v,min,max){ return Math.max(min, Math.min(max, v)); }
-
-  // ====== 描画：地面タイル ======
-  function drawTile(sx,sy){
-    ctx.beginPath();
-    ctx.moveTo(sx,sy);
-    ctx.lineTo(sx + TILE_W/2, sy + TILE_H/2);
-    ctx.lineTo(sx, sy + TILE_H);
-    ctx.lineTo(sx - TILE_W/2, sy + TILE_H/2);
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
+  // ===== Canvas サイズ（iOS Safari対策：getBoundingClientRect） =====
+  function updateHeaderHeight(){
+    const r = hdr.getBoundingClientRect();
+    document.documentElement.style.setProperty("--headerH", `${Math.ceil(r.height)}px`);
   }
 
+  function resizeIfNeeded(){
+    updateHeaderHeight();
+    const rect = canvas.getBoundingClientRect();
+    const w = Math.floor(rect.width * devicePixelRatio);
+    const h = Math.floor(rect.height * devicePixelRatio);
+    if(canvas.width !== w || canvas.height !== h){
+      canvas.width = w;
+      canvas.height = h;
+      ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
+    }
+  }
+
+  // ===== 図形 =====
   function roundRect(x,y,w,h,r){
     ctx.beginPath();
     ctx.moveTo(x+r,y);
@@ -144,7 +181,33 @@
     ctx.closePath();
   }
 
-  // ====== 施設描画 ======
+  function diamond(sx,sy,w,h){
+    ctx.beginPath();
+    ctx.moveTo(sx, sy);
+    ctx.lineTo(sx + w/2, sy + h/2);
+    ctx.lineTo(sx, sy + h);
+    ctx.lineTo(sx - w/2, sy + h/2);
+    ctx.closePath();
+  }
+
+  // ===== 描画：地面 =====
+  function drawGround(){
+    ctx.fillStyle="#070f28";
+    ctx.fillRect(-99999,-99999,199998,199998);
+
+    ctx.strokeStyle="rgba(255,255,255,.06)";
+    for(let y=0; y<=1200; y+=20){
+      for(let x=0; x<=1200; x+=20){
+        const p = iso(x,y);
+        const n = ((x*37 + y*19) % 100) / 100;
+        ctx.fillStyle = `rgba(180,220,255,${0.08 + n*0.12})`;
+        diamond(p.sx, p.sy, TILE_W, TILE_H);
+        ctx.fill(); ctx.stroke();
+      }
+    }
+  }
+
+  // ===== 描画：固定施設 =====
   function drawBuilding(b){
     const p = iso(b.x,b.y);
 
@@ -178,17 +241,36 @@
     }
   }
 
-  // HQ描画（色アウトライン）
+  // ===== 描画：ステーション =====
+  function drawStation(s){
+    const p = iso(s.x,s.y);
+
+    // 影
+    ctx.fillStyle="rgba(0,0,0,.28)";
+    ctx.beginPath();
+    ctx.ellipse(p.sx, p.sy + TILE_H*0.65, TILE_W*0.22, TILE_H*0.22, 0, 0, Math.PI*2);
+    ctx.fill();
+
+    // 小さめダイヤ
+    const w = TILE_W*0.55, h = TILE_H*0.95;
+    diamond(p.sx, p.sy - h*0.55, w, h);
+
+    ctx.fillStyle="rgba(255,255,255,.16)";
+    ctx.fill();
+    ctx.strokeStyle="rgba(255,255,255,.20)";
+    ctx.lineWidth=1.5;
+    ctx.stroke();
+  }
+
+  // ===== HQ描画 =====
   function drawHQ(hq){
     const p = iso(hq.x,hq.y);
 
-    // 影
     ctx.fillStyle="rgba(0,0,0,.4)";
     ctx.beginPath();
     ctx.ellipse(p.sx, p.sy + TILE_H*0.9, TILE_W*0.4, TILE_H*0.4, 0, 0, Math.PI*2);
     ctx.fill();
 
-    // 本体
     const w = TILE_W*1.1, h = TILE_H*1.8;
     const x = p.sx - w/2, y = p.sy - h;
     roundRect(x,y,w,h,12);
@@ -199,23 +281,20 @@
     ctx.lineWidth=3;
     ctx.stroke();
 
-    // ラベル
     ctx.fillStyle="#fff";
     ctx.font="bold 13px system-ui";
     ctx.textAlign="center";
     ctx.fillText(hq.label || "HQ", p.sx, y - 6);
   }
 
-  // ====== 旗描画（HQ→要塞） ======
+  // ===== 旗（HQ→要塞） =====
   function drawFlags(){
-    const maxDist = Number(document.getElementById('maxDist').value || 300);
-
+    const maxDist = Number(document.getElementById("maxDist").value || 300);
     const forts = FIXED.filter(b=>b.type==="fortress");
     for(const hq of hqs){
-      const p1 = iso(hq.x, hq.y);
-
+      const p1 = iso(hq.x,hq.y);
       for(const f of forts){
-        const p2 = iso(f.x, f.y);
+        const p2 = iso(f.x,f.y);
         const dx = hq.x - f.x;
         const dy = hq.y - f.y;
         const dist = Math.sqrt(dx*dx + dy*dy);
@@ -230,84 +309,63 @@
     }
   }
 
-  // ====== ヒット判定（HQ） ======
+  // ===== HQヒット判定 =====
   function hitHQ(px, py){
-    // 画面座標→ワールドへ戻す
     const x = (px - BASE.x - cam.x) / cam.s;
     const y = (py - BASE.y - cam.y) / cam.s;
 
-    // 手前優先（逆順）
     for(let i=hqs.length-1;i>=0;i--){
       const hq = hqs[i];
       const p = iso(hq.x, hq.y);
       const w = TILE_W*1.1, h = TILE_H*1.8;
       const rx = p.sx - w/2, ry = p.sy - h;
-      if(x>=rx && x<=rx+w && y>=ry && y<=ry+h){
-        return hq;
-      }
+      if(x>=rx && x<=rx+w && y>=ry && y<=ry+h) return hq;
     }
     return null;
   }
 
-  // ====== メイン描画 ======
+  // ===== 全描画 =====
   function draw(){
     resizeIfNeeded();
-    ctx.clearRect(0,0,canvas.width,canvas.height);
 
-    BASE.x = canvas.width/2;
-    BASE.y = canvas.height/2;
+    // 画面中心
+    const rect = canvas.getBoundingClientRect();
+    BASE.x = rect.width / 2;
+    BASE.y = rect.height / 2;
+
+    ctx.clearRect(0,0,canvas.width,canvas.height);
 
     ctx.save();
     ctx.translate(BASE.x + cam.x, BASE.y + cam.y);
     ctx.scale(cam.s, cam.s);
 
-    // 背景
-    ctx.fillStyle="#070f28";
-    ctx.fillRect(-99999,-99999,199998,199998);
+    drawGround();
 
-    // 地面（それっぽい雪ムラ）
-    ctx.strokeStyle="rgba(255,255,255,.06)";
-    for(let y=0; y<=1200; y+=20){
-      for(let x=0; x<=1200; x+=20){
-        const p=iso(x,y);
-        const n=((x*37+y*19)%100)/100;
-        ctx.fillStyle=`rgba(180,220,255,${0.08 + n*0.12})`;
-        drawTile(p.sx,p.sy);
-      }
-    }
+    // ステーション（先に薄く）
+    // 奥→手前でそれっぽく
+    const stSorted = [...STATIONS].sort((a,b)=>(a.x+a.y)-(b.x+b.y));
+    for(const s of stSorted) drawStation(s);
 
-    // 施設（奥→手前ソート）
+    // 固定施設
     const fixedSorted = [...FIXED].sort((a,b)=>(a.x+a.y)-(b.x+b.y));
     for(const b of fixedSorted) drawBuilding(b);
 
-    // 旗（HQ→要塞）
+    // 旗
     drawFlags();
 
-    // HQ（奥→手前ソート）
+    // HQ
     const hqSorted = [...hqs].sort((a,b)=>(a.x+a.y)-(b.x+b.y));
     for(const hq of hqSorted) drawHQ(hq);
 
     ctx.restore();
   }
 
-  // ====== リサイズ ======
-  function resizeIfNeeded(){
-    const w = canvas.clientWidth;
-    const h = canvas.clientHeight;
-    if(canvas.width !== Math.floor(w*devicePixelRatio) || canvas.height !== Math.floor(h*devicePixelRatio)){
-      canvas.width  = Math.floor(w*devicePixelRatio);
-      canvas.height = Math.floor(h*devicePixelRatio);
-      ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
-    }
-  }
-  window.addEventListener('resize', draw);
-
-  // ====== 操作：ドラッグHQ / パン / ズーム ======
+  // ===== 入力：ドラッグHQ / パン / ズーム =====
   let draggingHQ = null;
   let panning = false;
   let last = null;
 
-  canvas.addEventListener('pointerdown', (e)=>{
+  canvas.addEventListener("pointerdown", (e)=>{
     canvas.setPointerCapture(e.pointerId);
     last = {x:e.clientX, y:e.clientY};
 
@@ -319,18 +377,16 @@
     }
   });
 
-  canvas.addEventListener('pointermove', (e)=>{
+  canvas.addEventListener("pointermove", (e)=>{
     if(!last) return;
-
     const dx = e.clientX - last.x;
     const dy = e.clientY - last.y;
     last = {x:e.clientX, y:e.clientY};
 
     if(draggingHQ){
       const r = screenToReal(e.clientX, e.clientY);
-      // それっぽい範囲に制限（必要なら変更）
-      draggingHQ.x = clamp(r.x, 0, 1200);
-      draggingHQ.y = clamp(r.y, 0, 1200);
+      draggingHQ.x = clamp(r.x, WORLD_MIN, WORLD_MAX);
+      draggingHQ.y = clamp(r.y, WORLD_MIN, WORLD_MAX);
       draw();
     }else if(panning){
       cam.x += dx;
@@ -339,60 +395,73 @@
     }
   });
 
-  canvas.addEventListener('pointerup', ()=>{
+  canvas.addEventListener("pointerup", ()=>{
     draggingHQ = null;
     panning = false;
     last = null;
   });
 
-  canvas.addEventListener('wheel', (e)=>{
+  // PCズーム
+  canvas.addEventListener("wheel", (e)=>{
     e.preventDefault();
     const factor = Math.exp(-e.deltaY * 0.001);
     cam.s = clamp(cam.s * factor, 0.4, 2.5);
     draw();
   }, {passive:false});
 
-  // ====== UI：HQ追加 / 保存 / 読込 / リセット ======
-  document.getElementById('addHQ').onclick = ()=>{
-    const label = document.getElementById('hqLabel').value || `HQ${nextHqId}`;
-    const color = document.getElementById('hqColor').value || "#2b7cff";
+  // ===== UI =====
+  document.getElementById("addHQ").onclick = ()=>{
+    const label = document.getElementById("hqLabel").value || `HQ${nextHqId}`;
+    const color = document.getElementById("hqColor").value || "#2b7cff";
     hqs.push({ id:nextHqId++, type:"hq", x:520, y:520, label, color });
     draw();
   };
 
-  document.getElementById('save').onclick = ()=>{
+  document.getElementById("save").onclick = ()=>{
     const payload = {
       version: 1,
-      fixed: FIXED,  // 固定施設も入れる（将来ステ74もここへ）
-      hqs: hqs,
-      cam: cam
+      hqs,
+      cam,
+      maxDist: Number(document.getElementById("maxDist").value || 300)
     };
-    const json = JSON.stringify(payload, null, 2);
-    prompt("このJSONをコピーして保存してね", json);
+    prompt("このJSONをコピーして保存してね", JSON.stringify(payload, null, 2));
   };
 
-  document.getElementById('load').onclick = ()=>{
+  document.getElementById("load").onclick = ()=>{
     const txt = prompt("保存したJSONを貼り付けてね");
     if(!txt) return;
     try{
       const obj = JSON.parse(txt);
       if(obj && Array.isArray(obj.hqs)) hqs = obj.hqs;
-      if(obj && obj.cam) { cam.x = obj.cam.x||0; cam.y = obj.cam.y||0; cam.s = obj.cam.s||1; }
-      // fixed はこの版では固定（必要なら obj.fixed を使って上書きも可）
+      if(obj && obj.cam){
+        cam.x = obj.cam.x || 0;
+        cam.y = obj.cam.y || 0;
+        cam.s = obj.cam.s || 1;
+      }
+      if(obj && typeof obj.maxDist === "number"){
+        document.getElementById("maxDist").value = obj.maxDist;
+      }
       draw();
-    }catch(err){
+    }catch(e){
       alert("JSONが壊れてるかも…");
     }
   };
 
-  document.getElementById('reset').onclick = ()=>{
-    cam.x = 0; cam.y = 0; cam.s = 1;
+  document.getElementById("reset").onclick = ()=>{
+    cam.x=0; cam.y=0; cam.s=1;
     draw();
   };
 
-  // 初回描画
-  draw();
+  // ===== 初回描画（iOS Safari対策：遅延描画） =====
+  function boot(){
+    // header 高さ確定 → canvas rect 確定 → 描画
+    updateHeaderHeight();
+    requestAnimationFrame(()=> setTimeout(draw, 120));
+  }
+  window.addEventListener("resize", ()=> setTimeout(draw, 80));
+  boot();
 })();
 </script>
+
 </body>
 </html>
