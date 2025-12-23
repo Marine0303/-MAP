@@ -689,13 +689,13 @@ let stations = STATIONS_DATA.map((s, i) => ({
     const rect = canvas.getBoundingClientRect();
     let w = Math.floor(rect.width * devicePixelRatio);
     let h = Math.floor(rect.height * devicePixelRatio);
-
+    
     // Fallback if rect is zero (layout not ready)
     if(w < 100 || h < 100){
       w = Math.floor(window.innerWidth * devicePixelRatio);
       h = Math.floor((window.innerHeight - 120) * devicePixelRatio);
     }
-
+    
     if(canvas.width !== w || canvas.height !== h){
       canvas.width = w; canvas.height = h;
       ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
@@ -714,7 +714,7 @@ let stations = STATIONS_DATA.map((s, i) => ({
     const rect = canvas.getBoundingClientRect();
     // Ensure canvas has valid dimensions
     if(rect.width < 10 || rect.height < 10) return false;
-
+    
     const corners = [
       iso(WORLD_MIN, WORLD_MIN),
       iso(WORLD_MAX, WORLD_MIN),
@@ -949,17 +949,17 @@ let stations = STATIONS_DATA.map((s, i) => ({
     // 沃土: 要塞の内側 (477-717)
     // 雪原: Lv3ステーション範囲 (327-867)
     // 荒野: 砦がある外側
-
+    
     // 雪原エリア境界 (327-867)
     const snowBorder = [
       {x:327, y:327}, {x:867, y:327}, {x:867, y:867}, {x:327, y:867}
     ];
-
+    
     // 沃土エリア境界 (477-717) - 要塞の内側
     const fertileBorder = [
       {x:477, y:477}, {x:717, y:477}, {x:717, y:717}, {x:477, y:717}
     ];
-
+    
     // 雪原エリア枠 (赤)
     ctx.beginPath();
     for(let i=0; i<snowBorder.length; i++){
@@ -973,7 +973,7 @@ let stations = STATIONS_DATA.map((s, i) => ({
     ctx.strokeStyle = "rgba(239, 68, 68, 0.5)";
     ctx.lineWidth = 2;
     ctx.stroke();
-
+    
     // 沃土エリア枠 (黄)
     ctx.beginPath();
     for(let i=0; i<fertileBorder.length; i++){
@@ -987,25 +987,25 @@ let stations = STATIONS_DATA.map((s, i) => ({
     ctx.strokeStyle = "rgba(245, 158, 11, 0.6)";
     ctx.lineWidth = 2;
     ctx.stroke();
-
+    
     // エリアラベル
     ctx.font = "bold 12px system-ui";
     ctx.textAlign = "center";
-
+    
     // 荒野ラベル (四隅 - 砦エリア)
     ctx.fillStyle = "rgba(148, 163, 184, 0.6)";
     const wastelandPos = [iso(150, 150), iso(1050, 150), iso(150, 1050), iso(1050, 1050)];
     for(const p of wastelandPos){
       ctx.fillText("荒野", p.sx, p.sy);
     }
-
+    
     // 雪原ラベル (Lv3ステーションエリア)
     ctx.fillStyle = "rgba(239, 68, 68, 0.7)";
     const snowPos = [iso(350, 350), iso(850, 350), iso(350, 850), iso(850, 850)];
     for(const p of snowPos){
       ctx.fillText("雪原", p.sx, p.sy);
     }
-
+    
     // 沃土ラベル (要塞内側)
     ctx.fillStyle = "rgba(245, 158, 11, 0.7)";
     ctx.fillText("沃土", iso(600, 450).sx, iso(600, 450).sy);
@@ -1091,7 +1091,7 @@ let stations = STATIONS_DATA.map((s, i) => ({
     for(const s of sorted){
       const p = iso(s.x,s.y);
       const eff = effectById[s.effectId] || EFFECTS[0];
-
+      
       // ステーション名を短縮（生産工程 → 生産）
       const shortName = eff.name.replace("工程","");
       const label = `${shortName}Lv${s.lv}`;
@@ -1101,7 +1101,7 @@ let stations = STATIONS_DATA.map((s, i) => ({
       ctx.beginPath();
       ctx.arc(p.sx, p.sy, 5, 0, Math.PI*2);
       ctx.fill();
-
+      
       // 白い縁取り
       ctx.strokeStyle = "rgba(255,255,255,.6)";
       ctx.lineWidth = 1.5;
@@ -1213,18 +1213,18 @@ let stations = STATIONS_DATA.map((s, i) => ({
   // ===== Checklist =====
   function renderChecklist(){
     checkGrid.innerHTML = "";
-
+    
     for(const area of AREAS){
       // エリア内のステーション
       const areaStations = stations.filter(s => s.area === area.id);
       if(areaStations.length === 0) continue;
-
+      
       // このエリアで利用可能な効果
       const availableEffects = new Set();
       for(const s of areaStations){
         availableEffects.add(`${s.effectId}:${s.lv}`);
       }
-
+      
       // エリアヘッダー
       const header = document.createElement("div");
       header.className = "area-header";
@@ -1239,11 +1239,11 @@ let stations = STATIONS_DATA.map((s, i) => ({
       `;
       header.textContent = `${area.name} (${areaStations.length}箇所)`;
       checkGrid.appendChild(header);
-
+      
       // このエリアの効果チェックボックス
       for(const item of EFFECT_LEVELS){
         if(!availableEffects.has(item.key)) continue;
-
+        
         const row = document.createElement("div");
         row.className = "check";
 
@@ -1591,7 +1591,7 @@ let stations = STATIONS_DATA.map((s, i) => ({
       dEffect.appendChild(opt);
     }
   }
-
+  
   // Retry fitting until canvas has valid dimensions
   function tryFitWorld(attempts){
     resizeIfNeeded();
@@ -1604,14 +1604,14 @@ let stations = STATIONS_DATA.map((s, i) => ({
       draw();
     }
   }
-
+  
   window.addEventListener("resize", ()=>{ resizeIfNeeded(); fitWholeWorld(); draw(); });
-
+  
   // When page fully loads, fit the whole world with retries
   window.addEventListener("load", ()=>{
     setTimeout(()=> tryFitWorld(10), 50);
   });
-
+  
   boot();
   // Also try immediately in case load already fired
   setTimeout(()=> tryFitWorld(10), 100);
